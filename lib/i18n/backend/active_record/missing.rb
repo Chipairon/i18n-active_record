@@ -81,6 +81,15 @@ module I18n
           translation = ActiveRecord::Translation.new :locale => locale.to_s, :key => key
           translation.interpolations = interpolations
           translation.save
+
+          available_locales.each do |a_locale|
+            next if a_locale == locale
+            if Translation.where(:locale => a_locale.to_s, :key => key.to_s).empty?
+              translation = ActiveRecord::Translation.new :locale => a_locale.to_s, :key => key.to_s, :value => default_value
+              translation.interpolations = interpolations
+              translation.save
+            end
+          end
         end
 
         def translate(locale, key, options = {})
