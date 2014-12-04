@@ -3,11 +3,11 @@ require File.expand_path('../test_helper', __FILE__)
 class I18nActiveRecordMissingTest < Test::Unit::TestCase
   class Backend < I18n::Backend::ActiveRecord
     include I18n::Backend::ActiveRecord::Missing
+    include I18n::Backend::Memoize
   end
 
   def setup
-    I18n.backend = I18n::Backend::Chain.new(Backend.new, I18n.backend)
-    I18n.exception_handler = I18n::StoreMissingLookupExceptionHandler.new
+    I18n.backend = I18n::Backend::Chain.new(Backend.new, I18n::Backend::Simple.new)
     I18n::Backend::ActiveRecord::Translation.delete_all
     I18n.backend.store_translations(:en, :bar => 'Bar', :i18n => { :plural => { :keys => [:zero, :one, :other] } })
   end
@@ -45,6 +45,12 @@ class I18nActiveRecordMissingTest < Test::Unit::TestCase
     assert_equal 3, translations.length
   end
 
+  test "can work with pl" do
+    I18n.backend.store_translations(:en, :email => { :one => "You have an email", :other => "You have %{count} emails" } )
+    assert_equal "You have an email", I18n.t('email', :count => 1)
+    assert_equal "You have 3 emails", I18n.t('email', :count => 3)
+  end
+
   test "creates no stub for base key in pluralization" do
     I18n.t('foo', :count => 999)
     assert_equal 3, I18n::Backend::ActiveRecord::Translation.locale(:en).lookup("foo").count
@@ -68,6 +74,20 @@ class I18nActiveRecordMissingTest < Test::Unit::TestCase
     I18n.t(key, :separator => '|')
     I18n::Backend::ActiveRecord::Translation.locale(:en).lookup("foo.baz\001zab").first.update_attributes!(:value => 'baz!')
     assert_equal 'baz!', I18n.t(key, :separator => '|')
+  end
+
+  test "defaults: it has to store the default array, but return the resolved default. Also when it is memoized." do
+    # First time, it is not found in bd -> it is stored
+    assert_equal 'Not here', I18n.t(:missing, default: [:also_missing, 'Not here'])
+    # Second time it is found in bd, and it has to resolve the default. As a side effect, the resolved value is now memoized
+    assert_equal 'Not here', I18n.t(:missing, default: [:also_missing, 'Not here'])
+    # Third time just returns memoized value, without going to bd.
+    assert_equal 'Not here', I18n.t(:missing, default: [:also_missing, 'Not here'])
+
+    # If later on, the 'also_missing' key is translated (and then not missing anymore),
+    # the translation should return the value associated with the key 'also_missing'
+    I18n.backend.store_translations(:en, :also_missing => 'I have a new value')
+    assert_equal 'I have a new value', I18n.t(:missing, default: [:also_missing, 'Not here'])
   end
 
 end if defined?(ActiveRecord)
